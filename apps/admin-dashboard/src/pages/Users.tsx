@@ -7,12 +7,18 @@ export default function Users() {
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({ email: '', name: '', password: '' });
 
+    useEffect(() => {
+        const load = () => {
+            setLoading(true);
+            fetchUsers().then(setUsers).catch(console.error).finally(() => setLoading(false));
+        };
+        load();
+    }, []);
+
     const load = () => {
         setLoading(true);
         fetchUsers().then(setUsers).catch(console.error).finally(() => setLoading(false));
     };
-
-    useEffect(load, []);
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();

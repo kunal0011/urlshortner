@@ -16,11 +16,14 @@ __pycache__/
 venv/
 env/
 
-# Build
+# Build & Monorepo
 dist/
 bin/
 out/
 build/
+.turbo/
+.next/
+.vite/
 *.exe
 *.dll
 *.so

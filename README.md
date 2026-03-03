@@ -157,3 +157,21 @@ link = client.links.create('https://example.com')
 ---
 
 *Document Version 1.0 · March 2026 · Internal Use Only*
+
+### Managing Node.js Projects (Monorepo)
+
+The Node.js applications (Next.js, Vite React) and services (Fastify) are organized as an **NPM Workspace** managed by **Turborepo**. From the root directory, you can orchestrate tasks across all JavaScript/TypeScript projects:
+
+```bash
+# Install all dependencies (hoisted to root)
+npm install
+
+# Run all Node.js dev servers concurrently
+npm run dev
+
+# Build all Node.js projects (caches output via Turbo)
+npm run build
+
+# Lint all Node.js projects
+npm run lint
+```

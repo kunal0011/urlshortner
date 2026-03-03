@@ -7,12 +7,18 @@ export default function Orgs() {
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState({ name: '', slug: '' });
 
+    useEffect(() => {
+        const load = () => {
+            setLoading(true);
+            fetchOrgs().then(setOrgs).catch(console.error).finally(() => setLoading(false));
+        };
+        load();
+    }, []);
+
     const load = () => {
         setLoading(true);
         fetchOrgs().then(setOrgs).catch(console.error).finally(() => setLoading(false));
     };
-
-    useEffect(load, []);
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();

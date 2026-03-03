@@ -8,6 +8,17 @@ export default function Links() {
     const [loading, setLoading] = useState(true);
     const pageSize = 10;
 
+    useEffect(() => {
+        const load = () => {
+            setLoading(true);
+            fetchLinks(page, pageSize)
+                .then((d) => { setLinks(d.links || []); setTotal(d.total || 0); })
+                .catch(console.error)
+                .finally(() => setLoading(false));
+        };
+        load();
+    }, [page, pageSize]);
+
     const load = () => {
         setLoading(true);
         fetchLinks(page, pageSize)
@@ -15,8 +26,6 @@ export default function Links() {
             .catch(console.error)
             .finally(() => setLoading(false));
     };
-
-    useEffect(load, [page]);
 
     const handleDelete = async (id: string) => {
         if (!confirm('Delete this link?')) return;
