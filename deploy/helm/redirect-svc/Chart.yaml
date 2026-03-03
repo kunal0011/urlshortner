@@ -1,0 +1,12 @@
+apiVersion: v2
+name: redirect-svc
+description: URL Shortener – Redirect Service (Go/Fiber)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - urlshortner
+  - redirect
+home: https://github.com/kunal/urlshortner
+maintainers:
+  - name: URL Shortener Team

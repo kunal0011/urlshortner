@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: urlshortner-staging-redirect-svc
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: redirect-svc=123456789012.dkr.ecr.us-east-1.amazonaws.com/urlshortner/redirect-svc
+    argocd-image-updater.argoproj.io/redirect-svc.update-strategy: newest-build
+spec:
+  project: urlshortner
+
+  source:
+    repoURL: https://github.com/kunal/urlshortner.git
+    targetRevision: HEAD
+    path: deploy/helm/redirect-svc
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-staging.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: urlshortner-staging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 5

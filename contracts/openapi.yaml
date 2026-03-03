@@ -1,0 +1,779 @@
+openapi: 3.0.3
+info:
+  title: URL Shortener API
+  version: 1.0.0
+  description: >
+    Production-grade URL Shortener REST API. Supports link creation, redirect,
+    analytics, QR codes, bulk import, user/org management, and super-admin operations.
+  contact:
+    name: URL Shortener Team
+    email: api@urlshortner.example.com
+
+servers:
+  - url: https://api.urlshortner.example.com/api/v1
+    description: Production
+  - url: http://localhost:8081/api/v1
+    description: Local (url-api-svc)
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Redirect (redirect-svc, port 8080) ──────────────────────────────────────
+  /{short_code}:
+    get:
+      tags: [Redirects]
+      summary: Redirect to the original URL
+      operationId: redirect
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ShortCode'
+      responses:
+        '301':
+          description: Permanent redirect to long URL
+        '302':
+          description: Temporary redirect to long URL
+        '401':
+          description: Password-protected link requires password
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: Link has expired
+
+  # ── Links (url-api-svc) ──────────────────────────────────────────────────────
+  /links:
+    post:
+      tags: [Links]
+      summary: Create a short URL
+      operationId: createLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLinkRequest'
+      responses:
+        '201':
+          description: Short URL created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      tags: [Links]
+      summary: List links for an organization
+      operationId: listLinks
+      parameters:
+        - $ref: '#/components/parameters/OrgIdQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Paginated link list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListLinksResponse'
+
+  /links/bulk:
+    post:
+      tags: [Links]
+      summary: Bulk create short URLs (max 500)
+      operationId: bulkCreateLinks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 500
+              items:
+                $ref: '#/components/schemas/CreateLinkRequest'
+      responses:
+        '201':
+          description: Bulk creation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                  links:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LinkResponse'
+
+  /links/{id}:
+    delete:
+      tags: [Links]
+      summary: Delete (soft) a short URL
+      operationId: deleteLink
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/OrgIdQuery'
+      responses:
+        '204':
+          description: Link deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /links/{short_code}/qr:
+    post:
+      tags: [Links, QR]
+      summary: Generate QR code for a short URL
+      operationId: generateQR
+      parameters:
+        - $ref: '#/components/parameters/ShortCode'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                size:
+                  type: integer
+                  default: 10
+                border:
+                  type: integer
+                  default: 4
+      responses:
+        '200':
+          description: QR code CDN URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QRResponse'
+
+  # ── Analytics (analytics-query-svc) ─────────────────────────────────────────
+  /analytics/{shortCode}/summary:
+    get:
+      tags: [Analytics]
+      summary: Aggregate click metrics for a short code
+      operationId: getAnalyticsSummary
+      parameters:
+        - $ref: '#/components/parameters/ShortCodePath'
+      responses:
+        '200':
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsSummary'
+
+  /analytics/{shortCode}/timeseries:
+    get:
+      tags: [Analytics]
+      summary: Click timeseries for a short code
+      operationId: getAnalyticsTimeseries
+      parameters:
+        - $ref: '#/components/parameters/ShortCodePath'
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [hour, day]
+            default: day
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Timeseries data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsTimeseries'
+
+  /analytics/org/{orgId}:
+    get:
+      tags: [Analytics]
+      summary: Org-level analytics rollup
+      operationId: getOrgAnalytics
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Org analytics
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Users (user-org-svc) ─────────────────────────────────────────────────────
+  /users:
+    post:
+      tags: [Users]
+      summary: Create a user
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+    get:
+      tags: [Users]
+      summary: List users
+      operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/OrgIdQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserResponse'
+
+  /users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      operationId: getUser
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Users]
+      summary: Delete a user
+      operationId: deleteUser
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: User deleted
+
+  # ── Organizations ─────────────────────────────────────────────────────────────
+  /orgs:
+    post:
+      tags: [Organizations]
+      summary: Create an organization
+      operationId: createOrg
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrgRequest'
+      responses:
+        '201':
+          description: Org created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+
+    get:
+      tags: [Organizations]
+      summary: List organizations
+      operationId: listOrgs
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Org list
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /orgs/{id}:
+    get:
+      tags: [Organizations]
+      summary: Get organization by ID
+      operationId: getOrg
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Org
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrgResponse'
+
+    delete:
+      tags: [Organizations]
+      summary: Delete an organization
+      operationId: deleteOrg
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Org deleted
+
+  /orgs/{id}/members:
+    get:
+      tags: [Organizations]
+      summary: List members of an organization
+      operationId: listOrgMembers
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Member list
+          content:
+            application/json:
+              schema:
+                type: object
+
+    post:
+      tags: [Organizations]
+      summary: Add member to organization
+      operationId: addOrgMember
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                role:
+                  type: string
+                  enum: [owner, admin, member, viewer]
+      responses:
+        '200':
+          description: Member added
+
+  # ── Notifications ─────────────────────────────────────────────────────────────
+  /notify/email:
+    post:
+      tags: [Notifications]
+      summary: Send an email notification
+      operationId: sendEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEmailRequest'
+      responses:
+        '200':
+          description: Email sent
+
+  /notify/slack:
+    post:
+      tags: [Notifications]
+      summary: Send a Slack notification
+      operationId: sendSlack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendSlackRequest'
+      responses:
+        '200':
+          description: Slack message sent
+
+  # ── Admin ─────────────────────────────────────────────────────────────────────
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Platform-wide statistics
+      operationId: adminStats
+      responses:
+        '200':
+          description: Platform stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStats'
+
+  /admin/links:
+    get:
+      tags: [Admin]
+      summary: List all links (super-admin)
+      operationId: adminListLinks
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Admin link list
+
+  /admin/links/{id}:
+    delete:
+      tags: [Admin]
+      summary: Hard delete any link (super-admin)
+      operationId: adminDeleteLink
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Link deleted
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    ShortCode:
+      name: short_code
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 50
+    ShortCodePath:
+      name: shortCode
+      in: path
+      required: true
+      schema:
+        type: string
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OrgIdQuery:
+      name: org_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+
+  schemas:
+    CreateLinkRequest:
+      type: object
+      required: [long_url]
+      properties:
+        long_url:
+          type: string
+          format: uri
+        alias:
+          type: string
+          maxLength: 50
+          pattern: '^[a-zA-Z0-9_-]+$'
+        password:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        org_id:
+          type: string
+          format: uuid
+        tags:
+          type: array
+          items:
+            type: string
+
+    LinkResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        short_code:
+          type: string
+        short_url:
+          type: string
+          format: uri
+        long_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        click_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    ListLinksResponse:
+      type: object
+      properties:
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/LinkResponse'
+        total:
+          type: integer
+        page:
+          type: integer
+        page_size:
+          type: integer
+
+    QRResponse:
+      type: object
+      properties:
+        short_code:
+          type: string
+        qr_url:
+          type: string
+          format: uri
+        url:
+          type: string
+          format: uri
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        total_clicks:
+          type: integer
+        unique_visitors:
+          type: integer
+        mobile_clicks:
+          type: integer
+        desktop_clicks:
+          type: integer
+        top_countries:
+          type: array
+          items:
+            type: string
+        top_referrers:
+          type: array
+          items:
+            type: string
+        first_click:
+          type: string
+          format: date-time
+        last_click:
+          type: string
+          format: date-time
+
+    AnalyticsTimeseries:
+      type: object
+      properties:
+        short_code:
+          type: string
+        granularity:
+          type: string
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              bucket:
+                type: string
+                format: date-time
+              clicks:
+                type: integer
+
+    CreateUserRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        org_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        org_id:
+          type: string
+        role:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    CreateOrgRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [free, pro, enterprise]
+        owner_id:
+          type: string
+          format: uuid
+
+    OrgResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        plan:
+          type: string
+        owner_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    SendEmailRequest:
+      type: object
+      required: [to, subject]
+      properties:
+        to:
+          type: string
+          format: email
+        subject:
+          type: string
+        html:
+          type: string
+        text:
+          type: string
+
+    SendSlackRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+        channel:
+          type: string
+
+    AdminStats:
+      type: object
+      properties:
+        total_links:
+          type: integer
+        total_users:
+          type: integer
+        total_orgs:
+          type: integer
+        total_clicks:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        status:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

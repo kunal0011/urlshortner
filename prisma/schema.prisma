@@ -1,0 +1,155 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma Schema – URL Shortener
+// Used by Node.js admin/user-org services and Prisma Studio for management.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+enum LinkStatus {
+  active
+  expired
+  disabled
+}
+
+enum UserRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum PlanType {
+  free
+  pro
+  enterprise
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      PlanType @default(free)
+  maxLinks  Int      @default(100) @map("max_links")
+  ownerId   String?  @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner         User?         @relation("OrgOwner", fields: [ownerId], references: [id])
+  members       User[]        @relation("OrgMembers")
+  links         Link[]
+  customDomains CustomDomain[]
+  apiKeys       ApiKey[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?  @map("password_hash")
+  orgId        String?  @map("org_id")
+  role         UserRole @default(member)
+  keycloakId   String?  @unique @map("keycloak_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  org         Organization? @relation("OrgMembers", fields: [orgId], references: [id])
+  ownedOrgs   Organization[] @relation("OrgOwner")
+  links       Link[]
+  apiKeys     ApiKey[]
+
+  @@index([orgId])
+  @@index([keycloakId])
+  @@map("users")
+}
+
+model Link {
+  id           String     @id @default(uuid())
+  shortCode    String     @unique @map("short_code")
+  longUrl      String     @map("long_url")
+  orgId        String?    @map("org_id")
+  createdById  String?    @map("created_by_id")
+  customAlias  String?    @map("custom_alias")
+  passwordHash String?    @map("password_hash")
+  status       LinkStatus @default(active)
+  clickCount   BigInt     @default(0) @map("click_count")
+  expiresAt    DateTime?  @map("expires_at")
+  title        String?
+  utmSource    String?    @map("utm_source")
+  utmMedium    String?    @map("utm_medium")
+  utmCampaign  String?    @map("utm_campaign")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  org       Organization? @relation(fields: [orgId], references: [id])
+  createdBy User?         @relation(fields: [createdById], references: [id])
+  tags      LinkTag[]
+
+  @@index([orgId])
+  @@index([createdById])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("links")
+}
+
+model LinkTag {
+  id     String @id @default(uuid())
+  linkId String @map("link_id")
+  tag    String
+
+  link Link @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, tag])
+  @@index([linkId])
+  @@index([tag])
+  @@map("link_tags")
+}
+
+model ApiKey {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  orgId     String?   @map("org_id")
+  keyHash   String    @unique @map("key_hash")
+  name      String?
+  scopes    String[]
+  lastUsed  DateTime? @map("last_used")
+  expiresAt DateTime? @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([keyHash])
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model CustomDomain {
+  id        String   @id @default(uuid())
+  orgId     String   @map("org_id")
+  domain    String   @unique
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([domain])
+  @@map("custom_domains")
+}

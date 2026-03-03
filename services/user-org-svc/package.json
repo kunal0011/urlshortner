@@ -1,0 +1,28 @@
+{
+  "name": "user-org-svc",
+  "version": "1.0.0",
+  "description": "Fastify service for user and organization management",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --forceExit"
+  },
+  "dependencies": {
+    "fastify": "^4.26.2",
+    "@fastify/sensible": "^5.5.0",
+    "pg": "^8.11.5",
+    "dotenv": "^16.4.5",
+    "pino": "^9.1.0",
+    "uuid": "^9.0.0",
+    "bcrypt": "^5.1.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

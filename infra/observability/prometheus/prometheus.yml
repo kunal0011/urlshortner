@@ -1,0 +1,105 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: urlshortner
+    env:     dev
+
+rule_files:
+  - "rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+
+  # ── Redirect Service ───────────────────────────────────────────────────────
+  - job_name: 'redirect-svc'
+    static_configs:
+      - targets: ['redirect-svc:8080']
+    metrics_path: /metrics
+    scrape_interval: 5s
+
+  # ── URL API Service ────────────────────────────────────────────────────────
+  - job_name: 'url-api-svc'
+    static_configs:
+      - targets: ['url-api-svc:8081']
+    metrics_path: /metrics
+
+  # ── Analytics Ingest ───────────────────────────────────────────────────────
+  - job_name: 'analytics-ingest-svc'
+    static_configs:
+      - targets: ['analytics-ingest-svc:8082']
+    metrics_path: /metrics
+
+  # ── Analytics Query ────────────────────────────────────────────────────────
+  - job_name: 'analytics-query-svc'
+    static_configs:
+      - targets: ['analytics-query-svc:8083']
+    metrics_path: /metrics
+
+  # ── User/Org Service ───────────────────────────────────────────────────────
+  - job_name: 'user-org-svc'
+    static_configs:
+      - targets: ['user-org-svc:8084']
+    metrics_path: /metrics
+
+  # ── QR Service ────────────────────────────────────────────────────────────
+  - job_name: 'qr-svc'
+    static_configs:
+      - targets: ['qr-svc:8085']
+    metrics_path: /metrics
+
+  # ── Notification Service ───────────────────────────────────────────────────
+  - job_name: 'notification-svc'
+    static_configs:
+      - targets: ['notification-svc:8086']
+    metrics_path: /metrics
+
+  # ── Admin Service ──────────────────────────────────────────────────────────
+  - job_name: 'admin-svc'
+    static_configs:
+      - targets: ['admin-svc:8087']
+    metrics_path: /metrics
+
+  # ── Redis ─────────────────────────────────────────────────────────────────
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # ── Kafka (via JMX exporter) ───────────────────────────────────────────────
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka-exporter:9308']
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # ── Kubernetes nodes / pods (in cluster) ─────────────────────────────────
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: "true"
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__

@@ -1,0 +1,85 @@
+replicaCount: 10
+
+image:
+  repository: "{{ .Values.global.ecrRegistry }}/urlshortner/redirect-svc"
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+env:
+  REDIRECT_SVC_PORT: "8080"
+  ENVIRONMENT: "prod"
+  LOG_LEVEL: "info"
+
+# Secrets injected by External Secrets Operator
+externalSecrets:
+  enabled: true
+  secretStoreName: aws-secrets-manager
+  data:
+    - secretKey: DATABASE_URL
+      remoteRef:
+        key: urlshortner/prod/redirect-svc
+        property: DATABASE_URL
+    - secretKey: REDIS_HOST
+      remoteRef:
+        key: urlshortner/prod/redirect-svc
+        property: REDIS_HOST
+    - secretKey: REDIS_PASSWORD
+      remoteRef:
+        key: urlshortner/prod/redirect-svc
+        property: REDIS_PASSWORD
+
+# HPA – scale on CPU
+autoscaling:
+  enabled: true
+  minReplicas: 10
+  maxReplicas: 50
+  targetCPUUtilizationPercentage: 60
+
+# Node affinity for redirect-hot node group
+nodeSelector:
+  workload: redirect-hot
+
+tolerations:
+  - key: workload
+    value: redirect-hot
+    effect: NoSchedule
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+# Anti-affinity: spread across AZs
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app: redirect-svc
+          topologyKey: topology.kubernetes.io/zone
+
+global:
+  ecrRegistry: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
